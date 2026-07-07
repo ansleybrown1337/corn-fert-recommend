@@ -29,6 +29,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+AUTHOR_WEBSITE = "https://sites.google.com/view/ansleyjbrown"
+GITHUB_REPOSITORY = "https://github.com/ansleybrown1337/corn-fert-recommend"
+DONOVAN_DOI = "https://doi.org/10.1016/j.agwat.2026.110456"
+
 st.markdown(
     """
     <style>
@@ -45,6 +49,9 @@ st.markdown(
     .recommendation-box.experimental .recommendation-value { color: #6F5413; }
     .recommendation-unit { font-size: 1.05rem; font-weight: 600; color: #374151; }
     .recommendation-note { margin-top: .5rem; font-size: .88rem; color: #4B5563; }
+    .author-byline { margin: -.6rem 0 1.1rem; color: #4B5563; font-size: 1rem; }
+    .author-byline a { color: #1E4D2B; font-weight: 650; text-decoration: none; }
+    .author-byline a:hover { text-decoration: underline; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -106,16 +113,23 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
     _field_management_controls(field, index)
 
     field.field_name = st.text_input(
-        "Field name", value=field.field_name, key=f"name_{field.field_id}"
+        "Field name",
+        value=field.field_name,
+        key=f"name_{field.field_id}",
+        help="Enter a physical field, plot, or scenario name. Names need not be unique, but unique names make exports clearer.",
     )
     field.scenario_description = st.text_area(
         "Optional field or scenario description",
         value=field.scenario_description,
         key=f"description_{field.field_id}",
         height=70,
+        help="Optionally record management details that distinguish this field or scenario.",
     )
 
-    st.subheader("1. Crop and yield")
+    st.subheader(
+        "1. Crop and yield",
+        help="Enter a realistic full-irrigation grain-yield goal. Enable the experimental drought adjustment only for water-limited scenario analysis.",
+    )
     crop_left, crop_right = st.columns(2)
     field.expected_yield_bu_ac = crop_left.number_input(
         "Full-irrigation expected grain yield (bu/ac)",
@@ -123,6 +137,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         value=float(field.expected_yield_bu_ac),
         step=1.0,
         key=f"yield_{field.field_id}",
+        help="Expected grain yield under full irrigation, in bushels per acre. CSU recommends using a realistic field-specific yield goal.",
     )
     field.drought_mode = crop_right.checkbox(
         "Experimental drought adjustment",
@@ -135,12 +150,19 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
             "Experimental: combines the CSU yield-based framework with a published water x nitrogen "
             "response. It is not a validated CSU drought recommendation algorithm."
         )
+        st.markdown(
+            f"**Research basis:** [Donovan et al. (2026)]({DONOVAN_DOI}) reported that maximum "
+            "grain yield under limited water occurred with, on average, 31% lower optimum total N "
+            "availability than under full water. The yield-loss percentage below remains a user-entered "
+            "planning assumption, not a universal value from that study."
+        )
         method_label = st.radio(
-            "Water-limited yield method",
+            "Water-limited yield setup",
             ["Full yield plus reduction", "Direct water-limited yield"],
             index=0 if field.water_limited_yield_method == "percent_reduction" else 1,
             horizontal=True,
             key=f"yield_method_{field.field_id}",
+            help="Choose whether to calculate water-limited yield from an editable percentage loss or enter the yield goal directly. The subsequent 31% total-N adjustment is credited to Donovan et al. (2026).",
         )
         field.water_limited_yield_method = (
             "percent_reduction" if method_label == "Full yield plus reduction" else "direct"
@@ -167,15 +189,20 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
                 value=float(field.direct_water_limited_yield_bu_ac),
                 step=1.0,
                 key=f"direct_limited_yield_{field.field_id}",
+                help="Enter the expected grain yield directly for this water-limited scenario.",
             )
 
-    st.subheader("2. Soil nitrate")
+    st.subheader(
+        "2. Soil nitrate",
+        help="Enter residual soil nitrate for the full 0-24 inch root-zone sample. Use either a direct weighted value or contiguous sampled layers.",
+    )
     nitrate_label = st.radio(
         "Input method",
         ["Direct 0-24 inch weighted mean", "Enter sampled layers"],
         index=0 if field.soil_nitrate_method == "direct" else 1,
         horizontal=True,
         key=f"nitrate_method_{field.field_id}",
+        help="Use direct entry if your laboratory already reports a 0-24 inch weighted value. Use layers when surface and subsoil samples are reported separately.",
     )
     field.soil_nitrate_method = "direct" if nitrate_label.startswith("Direct") else "layers"
     previous_unit = field.soil_nitrate_input_unit
@@ -185,6 +212,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         index=0 if previous_unit == "ppm" else 1,
         horizontal=True,
         key=f"nitrate_unit_{field.field_id}",
+        help="Select the units shown on the soil report. The app converts lb nitrate-N/ac and ppm using the sampled thickness.",
     )
     selected_unit = "ppm" if unit_label.startswith("ppm") else "lb_ac"
     direct_value_key = f"soil_no3_value_{field.field_id}"
@@ -213,6 +241,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
             ),
             step=0.1,
             key=direct_value_key,
+            help="Enter the laboratory result for the combined 0-24 inch sample in the selected units.",
         )
         field.direct_soil_no3_n_ppm = (
             float(direct_value)
@@ -293,16 +322,23 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
                 "ppm = lb N/ac / 2.667 for 0-8 inches, and ppm = lb N/ac / 5.333 for 8-24 inches."
             )
 
-    st.subheader("3. Soil organic matter")
+    st.subheader(
+        "3. Soil organic matter",
+        help="Use the percent organic matter reported for the surface 0-8 inch soil sample.",
+    )
     field.organic_matter_pct = st.number_input(
         "Soil organic matter, 0-8 inches (%)",
         min_value=0.0,
         value=float(field.organic_matter_pct),
         step=0.1,
         key=f"om_{field.field_id}",
+        help="Enter soil organic matter as a percentage, typically from the 0-8 inch sample.",
     )
 
-    st.subheader("4. Irrigation water")
+    st.subheader(
+        "4. Irrigation water",
+        help="Enter irrigation-water nitrate concentration and water expected to be applied from planting through tasseling only.",
+    )
     water_left, water_right = st.columns(2)
     field.irrigation_no3_n_ppm = water_left.number_input(
         "Irrigation water NO3-N (ppm)",
@@ -310,6 +346,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         value=float(field.irrigation_no3_n_ppm),
         step=0.1,
         key=f"water_no3_{field.field_id}",
+        help="Enter laboratory-reported irrigation-water nitrate as NO3-N in ppm, not nitrate (NO3) in ppm.",
     )
     field.irrigation_through_tasseling_ac_in = water_right.number_input(
         "Irrigation applied through tasseling (acre-inches)",
@@ -320,7 +357,10 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         help="For the CSU N credit, count irrigation water applied from planting through tasseling.",
     )
 
-    st.subheader("5. Other N credits")
+    st.subheader(
+        "5. Other N credits",
+        help="Enter independently estimated N credits from the previous crop, manure, or another documented source. Do not duplicate soil or irrigation credits.",
+    )
     credit_columns = st.columns(3)
     field.legume_credit_lb_ac = credit_columns[0].number_input(
         "Previous crop / legume (lb N/ac)",
@@ -328,6 +368,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         value=float(field.legume_credit_lb_ac),
         step=1.0,
         key=f"legume_{field.field_id}",
+        help="Enter the applicable previous-crop or legume N credit in lb N/ac using current local guidance.",
     )
     field.manure_credit_lb_ac = credit_columns[1].number_input(
         "Manure (lb N/ac)",
@@ -335,6 +376,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         value=float(field.manure_credit_lb_ac),
         step=1.0,
         key=f"manure_{field.field_id}",
+        help="Enter the estimated plant-available manure N credit in lb N/ac, accounting for analysis, application, and year since application.",
     )
     field.other_n_credit_lb_ac = credit_columns[2].number_input(
         "Other user-defined credit (lb N/ac)",
@@ -342,6 +384,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         value=float(field.other_n_credit_lb_ac),
         step=1.0,
         key=f"other_credit_{field.field_id}",
+        help="Enter any additional documented N credit in lb N/ac that is not already represented elsewhere.",
     )
 
     if field.drought_mode:
@@ -485,6 +528,15 @@ def _render_field_result(field: FieldScenario, input_errors: list[str]) -> None:
 
 def recommendations_page() -> None:
     st.title("Colorado Corn Nitrogen Planner")
+    st.markdown(
+        f"""
+        <div class="author-byline">
+          Created by <a href="{AUTHOR_WEBSITE}" target="_blank">AJ Brown</a>, Agricultural Data Scientist
+          &nbsp;·&nbsp; <a href="{GITHUB_REPOSITORY}" target="_blank">View project on GitHub</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.write(
         "Standard CSU irrigated grain-corn nitrogen recommendations with an optional, clearly "
         "separated experimental drought scenario. A field can represent a physical field, plot, or hypothetical scenario."
@@ -625,6 +677,12 @@ def methodology_page() -> None:
 
 
 _initialize_state()
+st.sidebar.markdown("### Colorado Corn Nitrogen Planner")
+st.sidebar.markdown(
+    f"Created by [AJ Brown]({AUTHOR_WEBSITE}), Agricultural Data Scientist  \n"
+    f"[Personal website]({AUTHOR_WEBSITE}) · [GitHub repository]({GITHUB_REPOSITORY})"
+)
+st.sidebar.divider()
 page = st.sidebar.radio(
     "Navigation", ["Recommendations", "Compare Fields", "Methodology and References"]
 )
