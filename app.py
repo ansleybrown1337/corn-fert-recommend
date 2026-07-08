@@ -14,7 +14,12 @@ from src.charts import (
     multi_field_sources_chart,
     recommendation_comparison_chart,
 )
-from src.exports import export_results_csv, export_results_excel, results_to_dataframe
+from src.exports import (
+    export_results_csv,
+    export_results_excel,
+    export_results_pdf,
+    results_to_dataframe,
+)
 from src.models import FieldResult, FieldScenario, SoilLayer
 from src.references import REFERENCES, SOURCE_MAPPING
 from src.state import duplicate_field, move_field, new_field
@@ -32,6 +37,10 @@ st.set_page_config(
 AUTHOR_WEBSITE = "https://sites.google.com/view/ansleyjbrown"
 GITHUB_REPOSITORY = "https://github.com/ansleybrown1337/corn-fert-recommend"
 DONOVAN_DOI = "https://doi.org/10.1016/j.agwat.2026.110456"
+CSU_LOGO_URL = (
+    "https://agsci.colostate.edu/soilcrop/wp-content/uploads/sites/136/2022/02/"
+    "CSU_Logo-01-01.png"
+)
 
 st.markdown(
     """
@@ -61,6 +70,10 @@ st.markdown(
 def _initialize_state() -> None:
     if "fields" not in st.session_state:
         st.session_state.fields = [new_field(1)]
+
+
+def _navigate_to_methodology() -> None:
+    st.session_state.navigation = "Methodology and References"
 
 
 def _calculate_valid_results(
@@ -487,6 +500,11 @@ def _render_field_result(field: FieldScenario, input_errors: list[str]) -> None:
         width="stretch",
     )
     st.markdown(f"**Interpretation.** {recommendation_summary(result)}")
+    st.button(
+        "How was this recommendation calculated?",
+        key=f"methodology_{field.field_id}",
+        on_click=_navigate_to_methodology,
+    )
     with st.expander("Calculation detail and unbounded balances"):
         detail = pd.DataFrame(
             {
@@ -555,10 +573,33 @@ def recommendations_page() -> None:
     tabs = st.tabs(
         [f"{field.field_name.strip() or 'Unnamed field'} · {index + 1}" for index, field in enumerate(fields)]
     )
+    has_input_errors = False
     for index, (tab, field) in enumerate(zip(tabs, fields)):
         with tab:
             input_errors = _render_field_inputs(field, index)
+            has_input_errors = has_input_errors or bool(input_errors)
             _render_field_result(field, input_errors)
+
+    batch_results, batch_errors = _calculate_valid_results(fields)
+    complete_batch = (
+        not has_input_errors and not batch_errors and len(batch_results) == len(fields)
+    )
+    st.divider()
+    st.subheader("Export batch report")
+    st.caption(
+        "The printable PDF includes every field currently in the batch, with user inputs, "
+        "intermediate calculations, recommendations, methodology, and references."
+    )
+    st.download_button(
+        "Download PDF report for all fields",
+        data=export_results_pdf(batch_results) if complete_batch else b"",
+        file_name="corn_n_recommendations_report.pdf",
+        mime="application/pdf",
+        disabled=not complete_batch,
+        type="primary",
+    )
+    if not complete_batch:
+        st.caption("Correct all field input errors before exporting so no field is omitted from the report.")
 
 
 def compare_page() -> None:
@@ -605,7 +646,7 @@ def compare_page() -> None:
 
     st.subheader("Download reproducible results")
     st.caption("Both exports contain inputs, intermediate values, unbounded balances, and final recommendations.")
-    download_columns = st.columns(2)
+    download_columns = st.columns(3)
     download_columns[0].download_button(
         "Download CSV summary",
         data=export_results_csv(results),
@@ -620,6 +661,17 @@ def compare_page() -> None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
     )
+    complete_batch = not errors and len(results) == len(fields)
+    download_columns[2].download_button(
+        "Download printable PDF report",
+        data=export_results_pdf(results) if complete_batch else b"",
+        file_name="corn_n_recommendations_report.pdf",
+        mime="application/pdf",
+        disabled=not complete_batch,
+        width="stretch",
+    )
+    if not complete_batch:
+        st.caption("The PDF requires every field to be valid so the report cannot silently omit a field.")
 
 
 def methodology_page() -> None:
@@ -677,6 +729,7 @@ def methodology_page() -> None:
 
 
 _initialize_state()
+st.sidebar.image(CSU_LOGO_URL, width=220)
 st.sidebar.markdown("### Colorado Corn Nitrogen Planner")
 st.sidebar.markdown(
     f"Created by [AJ Brown]({AUTHOR_WEBSITE}), Agricultural Data Scientist  \n"
@@ -684,7 +737,9 @@ st.sidebar.markdown(
 )
 st.sidebar.divider()
 page = st.sidebar.radio(
-    "Navigation", ["Recommendations", "Compare Fields", "Methodology and References"]
+    "Navigation",
+    ["Recommendations", "Compare Fields", "Methodology and References"],
+    key="navigation",
 )
 st.sidebar.caption(
     "Decision-support and education only. Confirm recommendations with current soil and water tests and local agronomic advice."

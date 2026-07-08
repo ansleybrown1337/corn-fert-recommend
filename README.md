@@ -2,7 +2,7 @@
 
 A multi-field Streamlit decision-support application for irrigated grain-corn nitrogen planning in Colorado. The standard calculation implements the Colorado State University Extension publication **Fertilizing Irrigated Corn**. An optional experimental mode combines the CSU yield-based framework with water x nitrogen research from Donovan et al. (2026).
 
-A field entry may represent a physical field, a plot, or a hypothetical management scenario. Users can add, duplicate, rename, remove, and reorder fields, compare results, and download reproducible CSV or Excel outputs.
+A field entry may represent a physical field, a plot, or a hypothetical management scenario. Users can add, duplicate, rename, remove, and reorder fields, compare results, and download reproducible CSV, Excel, or printable PDF outputs.
 
 ## Scientific scope
 
@@ -67,6 +67,7 @@ The reference workbook `docs/2026 Fertilizer application calcs TAPS.xlsx` was al
 - Multi-field recommendation and N-source comparison charts
 - CSV export with inputs, intermediate calculations, unbounded balances, and outputs
 - Formatted Excel export with `Summary`, `Inputs`, `N Balance`, and `Methodology` sheets
+- Printable multi-field PDF report with inputs, intermediate calculations, recommendations, methodology, and references
 - Pure, typed calculation functions with unit tests
 
 ## Install and run
@@ -94,7 +95,7 @@ src/models.py          Typed field and result structures
 src/calculations.py    Pure agronomic calculations
 src/validation.py      Scientific input validation
 src/charts.py          Plotly visualizations
-src/exports.py         CSV and Excel exports
+src/exports.py         CSV, Excel, and PDF exports
 src/references.py      Source metadata and methodology mapping
 src/text.py            Field-specific interpretations
 src/state.py           Stable field/scenario state helpers

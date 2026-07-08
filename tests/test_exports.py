@@ -3,9 +3,15 @@ from __future__ import annotations
 from io import BytesIO
 
 from openpyxl import load_workbook
+from pypdf import PdfReader
 
 from src.calculations import calculate_batch_scenarios
-from src.exports import export_results_csv, export_results_excel, results_to_dataframe
+from src.exports import (
+    export_results_csv,
+    export_results_excel,
+    export_results_pdf,
+    results_to_dataframe,
+)
 from src.models import FieldScenario
 
 
@@ -58,3 +64,29 @@ def test_excel_export_has_expected_sheets_and_formatting() -> None:
     assert workbook["N Balance"]["B2"].value == "A"
     assert workbook["Methodology"].max_row > 10
     assert workbook["Summary"]["A1"].font.bold
+
+
+def test_pdf_export_contains_every_field_inputs_intermediates_and_references() -> None:
+    pdf = export_results_pdf(_results())
+    reader = PdfReader(BytesIO(pdf))
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert pdf.startswith(b"%PDF-")
+    assert len(reader.pages) >= 5
+    assert "Batch summary" in text
+    assert all(name in text for name in ("A", "B", "C"))
+    assert "Stable field ID: a" in text
+    assert "User inputs" in text
+    assert "Standard unbounded balance" in text
+    assert "Experimental drought-adjusted N availability target" in text
+    assert "Methodology and references" in text
+    assert "Fertilizing Irrigated Corn" in text
+
+
+def test_pdf_export_rejects_an_empty_batch() -> None:
+    try:
+        export_results_pdf([])
+    except ValueError as exc:
+        assert "At least one field result" in str(exc)
+    else:
+        raise AssertionError("Expected an empty PDF batch to be rejected")
