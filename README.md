@@ -22,12 +22,12 @@ The experimental drought calculation is:
 
 ```text
 water-limited yield = full-irrigation yield x (1 - yield reduction / 100)
-yield-adjusted basal N need = 35 + 1.2 x water-limited yield
-experimental N availability target = yield-adjusted basal N need x (1 - Donovan reduction / 100)
+full-yield basal N need = 35 + 1.2 x full-irrigation yield
+experimental N availability target = full-yield basal N need x (1 - Donovan reduction / 100)
 experimental fertilizer N = max(0, experimental target - standard CSU N credits)
 ```
 
-The 31% default is applied to the target N availability framework, not to fertilizer alone. Donovan et al. defined total N availability using fertilizer N, residual soil inorganic N, and irrigation-water N. The adjustment is applied before standard CSU credits are subtracted, and the standard CSU recommendation remains visible beside the experimental result.
+The water-limited yield value is displayed as scenario context and is not used as an additional multiplier on the Donovan adjustment. The 31% default is applied to the target N availability framework, not to fertilizer alone. Donovan et al. defined total N availability using fertilizer N, residual soil inorganic N, and irrigation-water N. The adjustment is applied before standard CSU credits are subtracted, and the standard CSU recommendation remains visible beside the experimental result.
 
 **The experimental drought adjustment is a research-informed extrapolation and has not been validated as a CSU fertilizer recommendation algorithm.**
 
@@ -53,7 +53,7 @@ The USDA-ARS Limited Irrigation Research Farm paper, *Response of Maize Yield Co
 
 UNL G2365 is used only for educational context on rapid crop N uptake from approximately V6 through R2 and the value of in-season management. Its uptake curve is not used as a fertilizer recommendation equation. Cumulative plant N uptake is not equivalent to total N availability or fertilizer N requirement.
 
-The reference workbook `docs/2026 Fertilizer application calcs TAPS.xlsx` was also inspected. It corroborates the supplied scenario arithmetic (210 bu/ac, 20% yield reduction, 168 bu/ac, 236.6 lb N/ac basal target, and 163.254 lb N/ac after a 31% reduction) but is not treated as the scientific authority for coefficients.
+The reference workbook `docs/2026 Fertilizer application calcs TAPS.xlsx` was also inspected. It reflects the earlier supplied scenario arithmetic (210 bu/ac, 20% yield reduction, 168 bu/ac, 236.6 lb N/ac basal target, and 163.254 lb N/ac after a 31% reduction) but is not treated as the scientific authority for coefficients. The current app avoids applying that yield-reduction assumption as a second N-target reduction.
 
 ## Functionality
 
@@ -67,7 +67,7 @@ The reference workbook `docs/2026 Fertilizer application calcs TAPS.xlsx` was al
 - Multi-field recommendation and N-source comparison charts
 - CSV export with inputs, intermediate calculations, unbounded balances, and outputs
 - Formatted Excel export with `Summary`, `Inputs`, `N Balance`, and `Methodology` sheets
-- Printable multi-field PDF report with inputs, intermediate calculations, recommendations, methodology, and references
+- Printable multi-field PDF report with bar charts, inputs, intermediate calculations, recommendations, methodology, and references
 - Pure, typed calculation functions with unit tests
 
 ## Install and run
@@ -108,7 +108,7 @@ docs/                  Local scientific reference library
 - This is an educational decision-support tool, not a guarantee of N sufficiency or crop response.
 - The CSU framework assumes realistic expected yield, adequate irrigation, and appropriate management.
 - The drought mode is an explicit extrapolation combining separate CSU and Donovan frameworks; it has not been field-validated as an integrated recommendation algorithm.
-- The 20% default yield reduction is a planning scenario, not a forecast. Stress timing, severity, weather, soil water, and hybrid response can materially change yield loss.
+- The 20% default yield reduction is a planning scenario, not a forecast, and is reported as yield context rather than used to scale the Donovan N target. Stress timing, severity, weather, soil water, and hybrid response can materially change yield loss.
 - The same standard CSU credits, including the organic matter credit calculated from the full-irrigation expected yield, are subtracted from both targets. This is a transparent version-1 methodological choice requiring agronomic review before operational adoption.
 - Soil tests, irrigation-water tests, and locally appropriate crop/manure credits remain the user's responsibility.
 - Irrigation-water N credit uses only irrigation expected from planting through tasseling, consistent with the CSU recommendation framework used here.

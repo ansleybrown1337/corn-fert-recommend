@@ -78,7 +78,7 @@ class StandardRecommendation:
 @dataclass(frozen=True, slots=True)
 class DroughtRecommendation:
     water_limited_yield_bu_ac: float
-    yield_adjusted_basal_n_need_lb_ac: float
+    full_yield_basal_n_need_lb_ac: float
     n_availability_target_lb_ac: float
     unbounded_balance_lb_ac: float
     fertilizer_n_lb_ac: float

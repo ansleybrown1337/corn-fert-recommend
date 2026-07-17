@@ -40,6 +40,7 @@ def test_summary_dataframe_contains_inputs_intermediates_and_outputs() -> None:
         "standard_basal_n_need_lb_ac",
         "standard_unbounded_balance_lb_ac",
         "standard_fertilizer_recommendation_lb_ac",
+        "full_yield_basal_n_need_lb_ac",
         "drought_adjusted_n_target_lb_ac",
         "drought_adjusted_fertilizer_recommendation_lb_ac",
     }
@@ -74,8 +75,15 @@ def test_pdf_export_contains_every_field_inputs_intermediates_and_references() -
     assert pdf.startswith(b"%PDF-")
     assert len(reader.pages) >= 5
     assert "Batch summary" in text
+    assert "Water-limited yield" in text
+    assert "Drought fertilizer N" in text
+    assert "Visual summaries" in text
+    assert "Fertilizer recommendation comparison" in text
+    assert "N source balance by field" in text
     assert all(name in text for name in ("A", "B", "C"))
     assert "Stable field ID: a" in text
+    assert "N balance visual" in text
+    assert "as context only" in text
     assert "User inputs" in text
     assert "Standard unbounded balance" in text
     assert "Experimental drought-adjusted N availability target" in text

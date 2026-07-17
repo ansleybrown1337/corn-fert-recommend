@@ -43,13 +43,13 @@ def test_csu_worked_example() -> None:
     assert result.standard.fertilizer_n_lb_ac == pytest.approx(176.74)
 
 
-def test_required_drought_example_exact_values() -> None:
+def test_required_drought_example_uses_full_yield_target_basis() -> None:
     water_limited_yield = calculate_water_limited_yield(210.0, 20.0)
-    basal = calculate_crop_n_need(water_limited_yield)
+    basal = calculate_crop_n_need(210.0)
     target = calculate_drought_adjusted_n_target(basal, 31.0)
     assert water_limited_yield == pytest.approx(168.0)
-    assert basal == pytest.approx(236.6)
-    assert target == pytest.approx(163.254)
+    assert basal == pytest.approx(287.0)
+    assert target == pytest.approx(198.03)
 
 
 def test_weighted_soil_nitrate_and_credit() -> None:
@@ -121,6 +121,7 @@ def test_batch_scenarios_are_independent_and_export_all_rows() -> None:
     assert results[0].drought is None
     assert results[1].drought is not None
     assert results[1].drought.water_limited_yield_bu_ac == pytest.approx(168)
+    assert results[1].drought.full_yield_basal_n_need_lb_ac == pytest.approx(287)
     assert results[0].field.expected_yield_bu_ac == 210
     assert results[2].standard.fertilizer_n_lb_ac == 0
     assert results[2].standard.unbounded_balance_lb_ac < 0

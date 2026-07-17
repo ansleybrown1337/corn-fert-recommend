@@ -108,7 +108,7 @@ def calculate_water_limited_yield(full_yield_bu_ac: float, yield_reduction_pct: 
 def calculate_drought_adjusted_n_target(
     basal_n_need_lb_ac: float, reduction_pct: float = 31.0
 ) -> float:
-    _require_nonnegative(basal_n_need_lb_ac, "Yield-adjusted basal N need")
+    _require_nonnegative(basal_n_need_lb_ac, "Drought target basis")
     _require_reduction(reduction_pct, "Donovan reduction")
     return basal_n_need_lb_ac * (1.0 - reduction_pct / 100.0)
 
@@ -163,16 +163,15 @@ def calculate_field_scenario(field: FieldScenario) -> FieldResult:
             water_limited_yield = calculate_water_limited_yield(
                 field.expected_yield_bu_ac, field.yield_reduction_pct
             )
-        yield_adjusted_basal = calculate_crop_n_need(water_limited_yield)
         target = calculate_drought_adjusted_n_target(
-            yield_adjusted_basal, field.donovan_reduction_pct
+            crop_n_need, field.donovan_reduction_pct
         )
         drought_fertilizer, drought_unbounded = calculate_drought_fertilizer_recommendation(
             target, credits.total_lb_ac
         )
         drought = DroughtRecommendation(
             water_limited_yield_bu_ac=water_limited_yield,
-            yield_adjusted_basal_n_need_lb_ac=yield_adjusted_basal,
+            full_yield_basal_n_need_lb_ac=crop_n_need,
             n_availability_target_lb_ac=target,
             unbounded_balance_lb_ac=drought_unbounded,
             fertilizer_n_lb_ac=drought_fertilizer,

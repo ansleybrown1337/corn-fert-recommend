@@ -156,7 +156,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         "Experimental drought adjustment",
         value=field.drought_mode,
         key=f"drought_{field.field_id}",
-        help="Research-informed extrapolation; not an official CSU fertilizer recommendation.",
+        help="Research-informed total-N availability adjustment; not an official CSU fertilizer recommendation.",
     )
     if field.drought_mode:
         st.warning(
@@ -166,8 +166,8 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
         st.markdown(
             f"**Research basis:** [Donovan et al. (2026)]({DONOVAN_DOI}) reported that maximum "
             "grain yield under limited water occurred with, on average, 31% lower optimum total N "
-            "availability than under full water. The yield-loss percentage below remains a user-entered "
-            "planning assumption, not a universal value from that study."
+            "availability than under full water. The yield-loss entry below is reported as scenario "
+            "context, not used as another reduction in the N target."
         )
         method_label = st.radio(
             "Water-limited yield setup",
@@ -175,7 +175,7 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
             index=0 if field.water_limited_yield_method == "percent_reduction" else 1,
             horizontal=True,
             key=f"yield_method_{field.field_id}",
-            help="Choose whether to calculate water-limited yield from an editable percentage loss or enter the yield goal directly. The subsequent 31% total-N adjustment is credited to Donovan et al. (2026).",
+            help="Choose whether to display water-limited yield from an editable percentage loss or enter it directly. The Donovan total-N adjustment is applied to the full-yield N target basis.",
         )
         field.water_limited_yield_method = (
             "percent_reduction" if method_label == "Full yield plus reduction" else "direct"
@@ -412,8 +412,8 @@ def _render_field_inputs(field: FieldScenario, index: int) -> list[str]:
                 help="Default 31% from Donovan et al. (2026). This concerns total N availability, not fertilizer alone.",
             )
             st.caption(
-                "Method choice: the reduction is applied to the yield-adjusted CSU basal crop N need. "
-                "The same CSU credits calculated for the full-yield standard reference are then subtracted."
+                "Method choice: the reduction is applied to the full-yield CSU basal crop N need as the "
+                "full-water target basis. The same CSU credits calculated for the standard reference are then subtracted."
             )
     return input_errors
 
@@ -441,8 +441,8 @@ def _render_field_result(field: FieldScenario, input_errors: list[str]) -> None:
         first[4].metric("Total N credits", f"{result.credits.total_lb_ac:.1f} lb/ac")
         second = st.columns(3)
         second[0].metric(
-            "Yield-adjusted basal N need",
-            f"{result.drought.yield_adjusted_basal_n_need_lb_ac:.1f} lb/ac",
+            "Full-yield N target basis",
+            f"{result.drought.full_yield_basal_n_need_lb_ac:.1f} lb/ac",
         )
         second[1].metric(
             "Experimental drought-adjusted N availability target",
@@ -695,12 +695,12 @@ def methodology_page() -> None:
 
     st.subheader("Experimental drought adjustment")
     st.write(
-        "The tool first establishes a water-limited yield goal, applies the CSU basal equation at that yield, "
-        "then reduces that yield-adjusted basal target by the visible Donovan percentage. The standard CSU "
-        "credits are subtracted only after this reduction. The standard CSU result remains visible alongside it."
+        "The tool reports a water-limited yield goal as scenario context, then applies the visible Donovan "
+        "percentage to the full-yield CSU basal crop N need as the full-water target basis. The standard CSU "
+        "credits are subtracted only after this total-N target reduction. The standard CSU result remains visible alongside it."
     )
     st.latex(r"Y_w=Y_f\times(1-r_y/100)")
-    st.latex(r"T_d=(35+1.2Y_w)\times(1-r_N/100)")
+    st.latex(r"T_d=(35+1.2Y_f)\times(1-r_N/100)")
     st.latex(r"F_d=\max(0,T_d-\mathrm{all\ standard\ CSU\ credits})")
     st.warning(
         "The experimental drought adjustment is a research-informed extrapolation and has not been "

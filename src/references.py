@@ -80,7 +80,7 @@ METHODOLOGY_ROWS = (
     ("Irrigation-water N credit", "0.223 x water NO3-N (ppm) x irrigation applied through tasseling (ac-in)", "CSU Extension"),
     ("Soil nitrate unit conversion", "lb N/ac = ppm x 8 x sampled thickness / 24; factors are 2.667 (0-8 in), 5.333 (8-24 in), and 8.0 (0-24 in)", "Algebraic equivalent of CSU 0-24 inch weighted-mean method"),
     ("Standard fertilizer N", "max(0, crop N need - all N credits)", "CSU Extension framework"),
-    ("Water-limited yield", "full-irrigation yield x (1 - editable yield reduction / 100)", "User-entered planning assumption"),
-    ("Experimental N availability target", "yield-adjusted basal N need x (1 - Donovan reduction / 100)", "CSU framework combined with Donovan et al. (2026)"),
+    ("Water-limited yield", "full-irrigation yield x (1 - editable yield reduction / 100)", "User-entered planning context; not used to scale the Donovan N target"),
+    ("Experimental N availability target", "full-yield basal N need x (1 - Donovan reduction / 100)", "CSU framework combined with Donovan et al. (2026)"),
     ("Experimental fertilizer N", "max(0, experimental N target - all standard N credits); OM credit remains based on full-irrigation expected yield", "Explicit application-method choice for this tool"),
 )

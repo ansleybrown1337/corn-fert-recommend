@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import date
 from io import BytesIO
 from xml.sax.saxutils import escape
@@ -16,6 +17,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
+    Flowable,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -92,7 +95,7 @@ def _result_row(result: FieldResult) -> dict[str, object]:
         "standard_unbounded_balance_lb_ac": result.standard.unbounded_balance_lb_ac,
         "standard_fertilizer_recommendation_lb_ac": result.standard.fertilizer_n_lb_ac,
         "donovan_reduction_pct": field.donovan_reduction_pct,
-        "yield_adjusted_basal_n_need_lb_ac": drought.yield_adjusted_basal_n_need_lb_ac if drought else None,
+        "full_yield_basal_n_need_lb_ac": drought.full_yield_basal_n_need_lb_ac if drought else None,
         "drought_adjusted_n_target_lb_ac": drought.n_availability_target_lb_ac if drought else None,
         "drought_unbounded_balance_lb_ac": drought.unbounded_balance_lb_ac if drought else None,
         "drought_adjusted_fertilizer_recommendation_lb_ac": drought.fertilizer_n_lb_ac if drought else None,
@@ -239,6 +242,18 @@ _PDF_LIGHT_GREEN = colors.HexColor("#EFF6F0")
 _PDF_LIGHT_GOLD = colors.HexColor("#FFF9E6")
 _PDF_LIGHT_GRAY = colors.HexColor("#F4F5F4")
 _PDF_TEXT = colors.HexColor("#26382C")
+_PDF_SOURCE_COLORS = {
+    "Residual soil nitrate": colors.HexColor("#4477AA"),
+    "Soil organic matter": colors.HexColor("#228833"),
+    "Irrigation water": colors.HexColor("#66CCEE"),
+    "Previous crop / legume": colors.HexColor("#CCBB44"),
+    "Manure": colors.HexColor("#AA3377"),
+    "Other credit": colors.HexColor("#BBBBBB"),
+    "Fertilizer required": colors.HexColor("#EE7733"),
+}
+_PDF_STANDARD_BLUE = colors.HexColor("#4477AA")
+_PDF_DROUGHT_ORANGE = colors.HexColor("#EE7733")
+_PDF_TARGET_PURPLE = colors.HexColor("#882255")
 
 
 def _pdf_styles() -> dict[str, ParagraphStyle]:
@@ -375,6 +390,253 @@ def _pdf_table(
     return table
 
 
+def _credit_pairs(result: FieldResult) -> list[tuple[str, float]]:
+    c = result.credits
+    return [
+        ("Residual soil nitrate", c.residual_soil_n_lb_ac),
+        ("Soil organic matter", c.organic_matter_n_lb_ac),
+        ("Irrigation water", c.irrigation_water_n_lb_ac),
+        ("Previous crop / legume", c.legume_n_lb_ac),
+        ("Manure", c.manure_n_lb_ac),
+        ("Other credit", c.other_n_lb_ac),
+    ]
+
+
+def _axis_max(value: float) -> float:
+    if value <= 0:
+        return 1.0
+    target_step = value / 4.0
+    for step in (5, 10, 20, 25, 50, 100, 200, 500):
+        if step >= target_step:
+            return math.ceil(value / step) * step
+    magnitude = 10 ** math.floor(math.log10(value))
+    step = 5 * magnitude
+    return math.ceil(value / step) * step
+
+
+def _chunks(items: list[FieldResult], size: int) -> Iterable[list[FieldResult]]:
+    for index in range(0, len(items), size):
+        yield items[index : index + size]
+
+
+class _StackedHorizontalBarChart(Flowable):
+    def __init__(
+        self,
+        rows: list[tuple[str, list[tuple[str, float]]]],
+        *,
+        markers: list[tuple[str, float, colors.Color]] | None = None,
+        width: float = 6.5 * inch,
+        bar_height: float = 14,
+        row_gap: float = 8,
+        label_width: float = 1.55 * inch,
+    ) -> None:
+        super().__init__()
+        self.rows = rows
+        self.markers = markers or []
+        self.width = width
+        self.bar_height = bar_height
+        self.row_gap = row_gap
+        self.label_width = label_width
+        self.legend_items = [
+            label
+            for label in _PDF_SOURCE_COLORS
+            if any(any(segment_label == label for segment_label, _ in segments) for _, segments in rows)
+        ]
+        self.legend_rows = max(1, math.ceil(len(self.legend_items) / 3))
+        bars_height = len(rows) * bar_height + max(0, len(rows) - 1) * row_gap
+        self.height = 24 + bars_height + 26 + self.legend_rows * 12
+
+    def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
+        self.width = min(self.width, available_width)
+        return self.width, self.height
+
+    def draw(self) -> None:
+        canvas = self.canv
+        plot_x = self.label_width
+        plot_width = max(1, self.width - self.label_width - 0.18 * inch)
+        legend_height = self.legend_rows * 12
+        bars_bottom = legend_height + 26
+        bars_top = self.height - 24
+        max_value = max(
+            [
+                sum(value for _, value in segments)
+                for _, segments in self.rows
+            ]
+            + [value for _, value, _ in self.markers]
+            + [1.0]
+        )
+        axis_max = _axis_max(max_value * 1.08)
+
+        canvas.setStrokeColor(colors.HexColor("#CCD5CC"))
+        canvas.setLineWidth(0.5)
+        canvas.line(plot_x, bars_bottom - 5, plot_x + plot_width, bars_bottom - 5)
+        canvas.setFont("Helvetica", 6.5)
+        canvas.setFillColor(colors.HexColor("#4B5563"))
+        for tick in (0, axis_max / 2, axis_max):
+            tick_x = plot_x + (tick / axis_max) * plot_width
+            canvas.setStrokeColor(colors.HexColor("#D6DDD6"))
+            canvas.line(tick_x, bars_bottom - 5, tick_x, bars_top)
+            canvas.setFillColor(colors.HexColor("#4B5563"))
+            canvas.drawCentredString(tick_x, bars_bottom - 17, f"{tick:.0f}")
+
+        for marker_index, (label, value, color) in enumerate(self.markers):
+            marker_x = plot_x + (value / axis_max) * plot_width
+            canvas.setStrokeColor(color)
+            canvas.setLineWidth(0.8)
+            canvas.setDash(3, 2)
+            canvas.line(marker_x, bars_bottom - 3, marker_x, bars_top + 2)
+            canvas.setDash()
+            canvas.setFillColor(color)
+            canvas.setFont("Helvetica-Bold", 6.3)
+            canvas.drawString(marker_x + 2, bars_top + 5 + 8 * marker_index, label)
+
+        canvas.setFont("Helvetica", 7.2)
+        for row_index, (row_label, segments) in enumerate(self.rows):
+            y = bars_top - self.bar_height - row_index * (self.bar_height + self.row_gap)
+            canvas.setFillColor(_PDF_TEXT)
+            canvas.drawRightString(plot_x - 6, y + 4, row_label[:28])
+            current_x = plot_x
+            for segment_label, value in segments:
+                if value <= 0:
+                    continue
+                segment_width = (value / axis_max) * plot_width
+                canvas.setFillColor(_PDF_SOURCE_COLORS[segment_label])
+                canvas.setStrokeColor(colors.white)
+                canvas.rect(current_x, y, segment_width, self.bar_height, fill=1, stroke=1)
+                if segment_width >= 22:
+                    canvas.setFillColor(colors.white if segment_label != "Other credit" else _PDF_TEXT)
+                    canvas.setFont("Helvetica-Bold", 6.2)
+                    canvas.drawCentredString(current_x + segment_width / 2, y + 4, f"{value:.0f}")
+                    canvas.setFont("Helvetica", 7.2)
+                current_x += segment_width
+
+        canvas.setFont("Helvetica", 6.5)
+        for index, label in enumerate(self.legend_items):
+            column = index % 3
+            row = index // 3
+            x = plot_x + column * (plot_width / 3)
+            y = 4 + (self.legend_rows - 1 - row) * 12
+            canvas.setFillColor(_PDF_SOURCE_COLORS[label])
+            canvas.rect(x, y, 7, 7, fill=1, stroke=0)
+            canvas.setFillColor(_PDF_TEXT)
+            canvas.drawString(x + 10, y, label)
+
+
+class _GroupedHorizontalBarChart(Flowable):
+    def __init__(
+        self,
+        rows: list[tuple[str, float, float | None]],
+        *,
+        width: float = 6.5 * inch,
+        label_width: float = 1.55 * inch,
+    ) -> None:
+        super().__init__()
+        self.rows = rows
+        self.width = width
+        self.label_width = label_width
+        self.row_height = 28
+        self.height = 50 + len(rows) * self.row_height
+
+    def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
+        self.width = min(self.width, available_width)
+        return self.width, self.height
+
+    def draw(self) -> None:
+        canvas = self.canv
+        plot_x = self.label_width
+        plot_width = max(1, self.width - self.label_width - 0.18 * inch)
+        bars_bottom = 27
+        bars_top = self.height - 22
+        max_value = max(
+            [
+                value
+                for _, standard, drought in self.rows
+                for value in (standard, drought if drought is not None else 0)
+            ]
+            + [1.0]
+        )
+        axis_max = _axis_max(max_value * 1.12)
+
+        canvas.setFont("Helvetica", 6.5)
+        for tick in (0, axis_max / 2, axis_max):
+            tick_x = plot_x + (tick / axis_max) * plot_width
+            canvas.setStrokeColor(colors.HexColor("#D6DDD6"))
+            canvas.setLineWidth(0.5)
+            canvas.line(tick_x, bars_bottom, tick_x, bars_top)
+            canvas.setFillColor(colors.HexColor("#4B5563"))
+            canvas.drawCentredString(tick_x, 11, f"{tick:.0f}")
+
+        for row_index, (field_name, standard, drought) in enumerate(self.rows):
+            row_top = bars_top - row_index * self.row_height
+            canvas.setFillColor(_PDF_TEXT)
+            canvas.setFont("Helvetica", 7.2)
+            canvas.drawRightString(plot_x - 6, row_top - 15, field_name[:28])
+            for bar_index, (label, value, color) in enumerate(
+                [
+                    ("Standard", standard, _PDF_STANDARD_BLUE),
+                    ("Drought", drought, _PDF_DROUGHT_ORANGE),
+                ]
+            ):
+                if value is None:
+                    continue
+                y = row_top - 10 - bar_index * 11
+                bar_width = (value / axis_max) * plot_width
+                canvas.setFillColor(color)
+                canvas.rect(plot_x, y, bar_width, 8, fill=1, stroke=0)
+                canvas.setFillColor(_PDF_TEXT)
+                canvas.setFont("Helvetica", 6.5)
+                canvas.drawString(plot_x + bar_width + 3, y, f"{value:.1f}")
+
+        legend_y = self.height - 12
+        for index, (label, color) in enumerate(
+            [("Standard CSU", _PDF_STANDARD_BLUE), ("Experimental drought", _PDF_DROUGHT_ORANGE)]
+        ):
+            x = plot_x + index * 1.7 * inch
+            canvas.setFillColor(color)
+            canvas.rect(x, legend_y, 7, 7, fill=1, stroke=0)
+            canvas.setFillColor(_PDF_TEXT)
+            canvas.setFont("Helvetica", 6.7)
+            canvas.drawString(x + 10, legend_y, label)
+
+
+def _individual_balance_chart(result: FieldResult) -> _StackedHorizontalBarChart:
+    rows = [("Standard CSU", [*_credit_pairs(result), ("Fertilizer required", result.standard.fertilizer_n_lb_ac)])]
+    markers = [("Standard crop N need", result.standard.crop_n_need_lb_ac, colors.HexColor("#222222"))]
+    if result.drought:
+        rows.append(
+            (
+                "Experimental drought",
+                [*_credit_pairs(result), ("Fertilizer required", result.drought.fertilizer_n_lb_ac)],
+            )
+        )
+        markers.append(("Experimental target", result.drought.n_availability_target_lb_ac, _PDF_TARGET_PURPLE))
+    return _StackedHorizontalBarChart(rows, markers=markers, bar_height=16, row_gap=10)
+
+
+def _batch_sources_chart(results: list[FieldResult]) -> _StackedHorizontalBarChart:
+    rows = [
+        (
+            result.field.field_name or "Unnamed field",
+            [*_credit_pairs(result), ("Fertilizer required", result.standard.fertilizer_n_lb_ac)],
+        )
+        for result in results
+    ]
+    return _StackedHorizontalBarChart(rows, bar_height=14, row_gap=8)
+
+
+def _batch_recommendation_chart(results: list[FieldResult]) -> _GroupedHorizontalBarChart:
+    return _GroupedHorizontalBarChart(
+        [
+            (
+                result.field.field_name or "Unnamed field",
+                result.standard.fertilizer_n_lb_ac,
+                result.drought.fertilizer_n_lb_ac if result.drought else None,
+            )
+            for result in results
+        ]
+    )
+
+
 def _format_number(value: float | None, suffix: str = "") -> str:
     return "-" if value is None else f"{value:.1f}{suffix}"
 
@@ -480,7 +742,7 @@ def _field_calculation_rows(result: FieldResult) -> list[list[object]]:
         rows.extend(
             [
                 ["Water-limited yield goal", _format_number(result.drought.water_limited_yield_bu_ac, " bu/ac"), "Scenario yield"],
-                ["Yield-adjusted basal crop N need", _format_number(result.drought.yield_adjusted_basal_n_need_lb_ac, " lb N/ac"), "Crop N need at water-limited yield"],
+                ["Full-yield basal crop N need", _format_number(result.drought.full_yield_basal_n_need_lb_ac, " lb N/ac"), "Full-water target basis for Donovan adjustment"],
                 ["Experimental drought-adjusted N availability target", _format_number(result.drought.n_availability_target_lb_ac, " lb N/ac"), "Experimental target; not plant uptake"],
                 ["Experimental unbounded balance", _format_number(result.drought.unbounded_balance_lb_ac, " lb N/ac"), "Experimental target minus all credits"],
                 ["Experimental fertilizer N recommendation", _format_number(result.drought.fertilizer_n_lb_ac, " lb N/ac"), "Unbounded balance, bounded at zero"],
@@ -538,15 +800,14 @@ def export_results_pdf(results: Iterable[FieldResult]) -> bytes:
     ]
 
     summary_rows: list[list[object]] = [
-        ["Field", "Mode", "Full yield", "Total credits", "Standard fertilizer N", "Experimental fertilizer N"]
+        ["Field", "Full yield", "Water-limited yield", "Standard fertilizer N", "Drought fertilizer N"]
     ]
     for result in results_list:
         summary_rows.append(
             [
                 result.field.field_name or "Unnamed field",
-                "Standard + experimental drought" if result.drought else "Standard CSU",
                 _format_number(result.field.expected_yield_bu_ac, " bu/ac"),
-                _format_number(result.credits.total_lb_ac, " lb/ac"),
+                _format_number(result.drought.water_limited_yield_bu_ac, " bu/ac") if result.drought else "-",
                 _format_number(result.standard.fertilizer_n_lb_ac, " lb/ac"),
                 _format_number(result.drought.fertilizer_n_lb_ac, " lb/ac") if result.drought else "-",
             ]
@@ -554,7 +815,7 @@ def export_results_pdf(results: Iterable[FieldResult]) -> bytes:
     story.append(
         _pdf_table(
             summary_rows,
-            [1.18 * inch, 1.05 * inch, 0.77 * inch, 0.82 * inch, 1.02 * inch, 1.02 * inch],
+            [1.55 * inch, 1.05 * inch, 1.25 * inch, 1.35 * inch, 1.3 * inch],
             styles,
         )
     )
@@ -566,8 +827,22 @@ def export_results_pdf(results: Iterable[FieldResult]) -> bytes:
                 "tests and current local agronomic advice.",
                 styles["small"],
             ),
+            Spacer(1, 0.14 * inch),
+            _pdf_paragraph("Visual summaries", styles["h1"]),
         ]
     )
+    for chunk_index, chunk in enumerate(_chunks(results_list, 8), start=1):
+        chunk_label = f" - fields {1 + (chunk_index - 1) * 8}-{(chunk_index - 1) * 8 + len(chunk)}" if len(results_list) > 8 else ""
+        story.extend(
+            [
+                _pdf_paragraph(f"Fertilizer recommendation comparison{chunk_label}", styles["h2"]),
+                _batch_recommendation_chart(chunk),
+                Spacer(1, 0.12 * inch),
+                _pdf_paragraph(f"N source balance by field{chunk_label}", styles["h2"]),
+                _batch_sources_chart(chunk),
+                Spacer(1, 0.12 * inch),
+            ]
+        )
 
     for result in results_list:
         field = result.field
@@ -629,16 +904,22 @@ def export_results_pdf(results: Iterable[FieldResult]) -> bytes:
             [
                 Spacer(1, 0.12 * inch),
                 metric_table,
-                _pdf_paragraph("User inputs", styles["h2"]),
-                _pdf_table(_field_input_rows(result), [2.75 * inch, 3.75 * inch], styles),
-                _pdf_paragraph("Intermediate calculations and recommendations", styles["h2"]),
-                _pdf_table(
-                    _field_calculation_rows(result),
-                    [2.65 * inch, 1.35 * inch, 2.5 * inch],
-                    styles,
-                ),
+                _pdf_paragraph("N balance visual", styles["h2"]),
+                _individual_balance_chart(result),
                 _pdf_paragraph("Interpretation", styles["h2"]),
                 _pdf_paragraph(recommendation_summary(result), styles["body"]),
+                _pdf_paragraph("User inputs", styles["h2"]),
+                _pdf_table(_field_input_rows(result), [2.75 * inch, 3.75 * inch], styles),
+                KeepTogether(
+                    [
+                        _pdf_paragraph("Intermediate calculations and recommendations", styles["h2"]),
+                        _pdf_table(
+                            _field_calculation_rows(result),
+                            [2.65 * inch, 1.35 * inch, 2.5 * inch],
+                            styles,
+                        ),
+                    ]
+                ),
             ]
         )
         if result.warnings:
