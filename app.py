@@ -70,10 +70,28 @@ st.markdown(
 def _initialize_state() -> None:
     if "fields" not in st.session_state:
         st.session_state.fields = [new_field(1)]
+    if "active_field_id" not in st.session_state:
+        st.session_state.active_field_id = st.session_state.fields[0].field_id
 
 
 def _navigate_to_methodology() -> None:
     st.session_state.navigation = "Methodology and References"
+
+
+def _ensure_active_field(fields: list[FieldScenario]) -> str:
+    field_ids = [field.field_id for field in fields]
+    if not field_ids:
+        fields.append(new_field(1))
+        field_ids = [fields[0].field_id]
+    pending_field_id = st.session_state.pop("pending_active_field_id", None)
+    if pending_field_id in field_ids:
+        active_field_id = pending_field_id
+    elif st.session_state.get("active_field_id") in field_ids:
+        active_field_id = st.session_state.active_field_id
+    else:
+        active_field_id = field_ids[0]
+    st.session_state.active_field_id = active_field_id
+    return active_field_id
 
 
 def _calculate_valid_results(
@@ -93,7 +111,9 @@ def _field_management_controls(field: FieldScenario, index: int) -> None:
     fields: list[FieldScenario] = st.session_state.fields
     columns = st.columns([1, 1, 1, 1])
     if columns[0].button("Duplicate field", key=f"duplicate_{field.field_id}", width="stretch"):
-        fields.insert(index + 1, duplicate_field(field, len(fields)))
+        duplicated = duplicate_field(field, len(fields))
+        fields.insert(index + 1, duplicated)
+        st.session_state.pending_active_field_id = duplicated.field_id
         st.rerun()
     if columns[1].button(
         "Remove field",
@@ -102,6 +122,8 @@ def _field_management_controls(field: FieldScenario, index: int) -> None:
         width="stretch",
     ):
         fields.pop(index)
+        if fields:
+            st.session_state.pending_active_field_id = fields[min(index, len(fields) - 1)].field_id
         st.rerun()
     if columns[2].button(
         "Move left",
@@ -110,6 +132,7 @@ def _field_management_controls(field: FieldScenario, index: int) -> None:
         width="stretch",
     ):
         move_field(fields, index, -1)
+        st.session_state.pending_active_field_id = field.field_id
         st.rerun()
     if columns[3].button(
         "Move right",
@@ -118,6 +141,7 @@ def _field_management_controls(field: FieldScenario, index: int) -> None:
         width="stretch",
     ):
         move_field(fields, index, 1)
+        st.session_state.pending_active_field_id = field.field_id
         st.rerun()
 
 
@@ -560,29 +584,43 @@ def recommendations_page() -> None:
         "separated experimental drought scenario. A field can represent a physical field, plot, or hypothetical scenario."
     )
     if st.button("Add another field", type="primary", width="content"):
-        st.session_state.fields.append(new_field(len(st.session_state.fields) + 1))
+        added = new_field(len(st.session_state.fields) + 1)
+        st.session_state.fields.append(added)
+        st.session_state.pending_active_field_id = added.field_id
         st.rerun()
 
     fields: list[FieldScenario] = st.session_state.fields
+    active_field_id = _ensure_active_field(fields)
     duplicate_names = find_duplicate_field_names(fields)
     if duplicate_names:
         st.warning(
             "Duplicate field names may make comparisons and exports ambiguous: " + ", ".join(duplicate_names)
         )
 
-    tabs = st.tabs(
-        [f"{field.field_name.strip() or 'Unnamed field'} · {index + 1}" for index, field in enumerate(fields)]
+    field_ids = [field.field_id for field in fields]
+    field_labels = {
+        field.field_id: f"{field.field_name.strip() or 'Unnamed field'} · {index + 1}"
+        for index, field in enumerate(fields)
+    }
+    active_field_id = st.radio(
+        "Active field",
+        field_ids,
+        index=field_ids.index(active_field_id),
+        format_func=lambda field_id: field_labels[field_id],
+        horizontal=True,
+        help="Choose the field to edit. Edits keep this field selected after the page recalculates.",
     )
-    has_input_errors = False
-    for index, (tab, field) in enumerate(zip(tabs, fields)):
-        with tab:
-            input_errors = _render_field_inputs(field, index)
-            has_input_errors = has_input_errors or bool(input_errors)
-            _render_field_result(field, input_errors)
+    st.session_state.active_field_id = active_field_id
+    active_index = next(
+        index for index, field in enumerate(fields) if field.field_id == active_field_id
+    )
+    active_field = fields[active_index]
+    input_errors = _render_field_inputs(active_field, active_index)
+    _render_field_result(active_field, input_errors)
 
     batch_results, batch_errors = _calculate_valid_results(fields)
     complete_batch = (
-        not has_input_errors and not batch_errors and len(batch_results) == len(fields)
+        not input_errors and not batch_errors and len(batch_results) == len(fields)
     )
     st.divider()
     st.subheader("Export batch report")

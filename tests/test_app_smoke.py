@@ -32,3 +32,37 @@ def test_streamlit_pages_and_duplicated_fields_render_without_exceptions() -> No
 
     app.sidebar.radio[0].set_value("Methodology and References").run()
     assert not app.exception
+
+
+def test_editing_duplicated_field_keeps_that_field_active() -> None:
+    app_path = Path(__file__).parents[1] / "app.py"
+    app = AppTest.from_file(str(app_path), default_timeout=30).run()
+    assert not app.exception
+
+    next(button for button in app.button if button.label == "Duplicate field").click().run()
+    assert not app.exception
+    next(button for button in app.button if button.label == "Duplicate field").click().run()
+    assert not app.exception
+
+    active_field = next(radio for radio in app.radio if radio.label == "Active field")
+    assert len(active_field.options) == 3
+    active_field_id = active_field.value
+    soil_nitrate = next(
+        number_input
+        for number_input in app.number_input
+        if number_input.label.startswith("Depth-weighted mean soil NO3-N")
+    )
+    assert soil_nitrate.key.endswith(active_field_id)
+
+    soil_nitrate.set_value(12.0).run()
+    assert not app.exception
+
+    active_field_after_edit = next(radio for radio in app.radio if radio.label == "Active field")
+    soil_nitrate_after_edit = next(
+        number_input
+        for number_input in app.number_input
+        if number_input.label.startswith("Depth-weighted mean soil NO3-N")
+    )
+    assert active_field_after_edit.value == active_field_id
+    assert soil_nitrate_after_edit.key.endswith(active_field_id)
+    assert soil_nitrate_after_edit.value == 12.0
